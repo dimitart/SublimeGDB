@@ -707,8 +707,6 @@ class GDBVariablesView(GDBView):
                         if "new_num_children" in value:
 
                             if (int(value["new_num_children"]) < len(real.children)):
-                                print("popa")
-                                # print(real.children[0:value["new_num_children"]])
                                 new_num_children = int(value["new_num_children"])
                                 real.children = real.children[0:new_num_children]
                                 continue
