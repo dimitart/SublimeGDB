@@ -365,16 +365,27 @@ class GDBVariable:
         return expression
 
     def add_children(self, name):
-        children = listify(parse_result_line(run_cmd("-var-list-children 1 \"%s\"" % name, True))["children"]["child"])
-        for child in children:
-            child = GDBVariable(child, parent=self)
-            if child.get_name().endswith(".private") or \
-                    child.get_name().endswith(".protected") or \
-                    child.get_name().endswith(".public"):
-                if child.has_children():
-                    self.add_children(child.get_name())
-            else:
-                self.children.append(child)
+        step = 50
+        i = 0
+        while True:
+            i += step
+            parsed_line = parse_result_line(run_cmd("-var-list-children 1 \"%s\" %d %d" % (name, i - step, i), True))
+            if (not "children" in parsed_line):
+                break
+            children = listify(parsed_line["children"]["child"])
+            for child in children:
+                child = GDBVariable(child, parent=self)
+                if child.get_name().endswith(".private") or \
+                        child.get_name().endswith(".protected") or \
+                        child.get_name().endswith(".public"):
+                    if child.has_children():
+                        self.add_children(child.get_name())
+                else:
+                    self.children.append(child)
+            if (len(children) < step):
+                run_cmd("-var-set-update-range %s 0 %d" % (name, len(self.children)))
+                break
+
 
     def is_editable(self):
         line = run_cmd("-var-show-attributes %s" % (self.get_name()), True)
@@ -409,21 +420,27 @@ class GDBVariable:
 
     def expand(self):
         self.is_expanded = True
-        if not (len(self.children) == 0 and int(self.valuepair["numchild"]) > 0):
+        if not (len(self.children) == 0 and self.has_children()):
             return
         self.add_children(self.get_name())
 
     def has_children(self):
-        return int(self.valuepair["numchild"]) > 0
+        return (int(self.valuepair["numchild"]) > 0 or 
+            ("displayhint" in self.valuepair and (self.valuepair["displayhint"] == "array" or self.valuepair["displayhint"] == "map")) or
+                ("has_more" in self.valuepair and (self.valuepair["has_more"] == "1")))
 
     def collapse(self):
         self.is_expanded = False
 
     def __str__(self):
+        exp_str   = self['exp']
+        value_str = self['value']
+        type_str  = self['type']
+        if (len(exp_str)   > 20): exp_str   = exp_str[0:17] + "..."
         if not "dynamic_type" in self or len(self['dynamic_type']) == 0 or self['dynamic_type'] == self['type']:
-            return "%s %s = %s" % (self['type'], self['exp'], self['value'])
+            return "%-20s = %-20s %s" % (exp_str, value_str, type_str)
         else:
-            return "%s %s = (%s) %s" % (self['type'], self['exp'], self['dynamic_type'], self['value'])
+            return "%-20s = (%s) %s %10s" % (exp_str, self['dynamic_type'], values_str, type_str)
 
     def __iter__(self):
         return self.valuepair.__iter__()
@@ -672,7 +689,7 @@ class GDBVariablesView(GDBView):
         if sameFrame:
             for var in self.variables:
                 var.clear_dirty()
-            ret = parse_result_line(run_cmd("-var-update --all-values *", True))["changelist"]
+            ret = parse_result_line(run_cmd("-var-update --all-values *", True, timeout = 1000))["changelist"]
             if "varobj" in ret:
                 ret = listify(ret["varobj"])
             dellist = []
@@ -686,6 +703,24 @@ class GDBVariablesView(GDBView):
                             dellist.append(real)
                             continue
                         real.update(value)
+
+                        if "new_num_children" in value:
+
+                            if (int(value["new_num_children"]) < len(real.children)):
+                                print("popa")
+                                # print(real.children[0:value["new_num_children"]])
+                                new_num_children = int(value["new_num_children"])
+                                real.children = real.children[0:new_num_children]
+                                continue
+
+                            if "new_children" in value:
+                                children = listify(value["new_children"])
+                                for child in children:
+                                    child = GDBVariable(child, parent=real)
+                                    real.children.append(child)
+                                run_cmd("-var-set-update-range %s 0 %d" % (real.name, len(real.children)))
+                                continue
+
                         if not "value" in value and not "new_value" in value:
                             real.update_value()
                         break
@@ -1658,6 +1693,9 @@ It seems you're not running gdb with the "mi" interpreter. Please add
             gdb_run_status = "running"
 
             run_cmd(get_setting("exec_cmd", "-exec-run"), True)
+            enable_pretty_printing = get_setting("pretty_printing", False, view);
+            if (enable_pretty_printing):
+                run_cmd("-enable-pretty-printing")
 
             show_input()
         else:

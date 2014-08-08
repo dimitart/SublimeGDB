@@ -111,6 +111,9 @@
     // Whether to log the raw data read from and written to the gdb session and the inferior program.
     "debug": true,
 
+    // Enable pretty printing
+    "pretty_printing" : false,
+
     // Disables showing the error message dialog when something goes wrong
     "i_know_how_to_use_gdb_thank_you_very_much": false
 }
