@@ -112,7 +112,14 @@
     "debug": true,
 
     // Enable pretty printing
-    "pretty_printing" : false,
+    "pretty_printing": false,
+
+    // indent btw var name and "=" symbol
+    "indent1": 10,
+
+    // indent btw "=" symbol and type
+    "indent2": 20,
+
 
     // Disables showing the error message dialog when something goes wrong
     "i_know_how_to_use_gdb_thank_you_very_much": false

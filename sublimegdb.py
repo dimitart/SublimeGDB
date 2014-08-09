@@ -133,6 +133,8 @@ gdb_run_status = None
 result_regex = re.compile("(?<=\^)[^,\"]*")
 collapse_regex = re.compile("{.*}", re.DOTALL)
 
+indent1 = 0
+indent2 = 0
 
 def normalize(filename):
     if filename is None:
@@ -426,7 +428,7 @@ class GDBVariable:
 
     def has_children(self):
         return (int(self.valuepair["numchild"]) > 0 or 
-            ("displayhint" in self.valuepair and (self.valuepair["displayhint"] == "array" or self.valuepair["displayhint"] == "map")) or
+            ("displayhint" in self.valuepair and (self.valuepair["displayhint"] == "array" or self.valuepair["displayhint"] == "map" or self.valuepair["displayhint"] == "set")) or
                 ("has_more" in self.valuepair and (self.valuepair["has_more"] == "1")))
 
     def collapse(self):
@@ -436,9 +438,9 @@ class GDBVariable:
         exp_str   = self['exp']
         value_str = self['value']
         type_str  = self['type']
-        if (len(exp_str)   > 20): exp_str   = exp_str[0:17] + "..."
+        if (len(exp_str) > 20): exp_str = exp_str[0:17] + "..."
         if not "dynamic_type" in self or len(self['dynamic_type']) == 0 or self['dynamic_type'] == self['type']:
-            return "%-20s = %-20s %s" % (exp_str, value_str, type_str)
+            return ("%-" + str(indent1) + "s= %-" + str(indent2) + "s %s") % (exp_str, value_str, type_str)
         else:
             return "%-20s = (%s) %s %10s" % (exp_str, self['dynamic_type'], values_str, type_str)
 
@@ -689,6 +691,12 @@ class GDBVariablesView(GDBView):
         if sameFrame:
             for var in self.variables:
                 var.clear_dirty()
+
+            for var in self.variables:
+                if ("displayhint" in var.valuepair and var.valuepair["displayhint"] == "set"):
+                    var.children = []
+                    var.add_children(var.get_name())
+
             ret = parse_result_line(run_cmd("-var-update --all-values *", True, timeout = 1000))["changelist"]
             if "varobj" in ret:
                 ret = listify(ret["varobj"])
@@ -702,7 +710,6 @@ class GDBVariablesView(GDBView):
                             real.delete()
                             dellist.append(real)
                             continue
-                        real.update(value)
 
                         if "new_num_children" in value:
 
@@ -716,11 +723,15 @@ class GDBVariablesView(GDBView):
                                 for child in children:
                                     child = GDBVariable(child, parent=real)
                                     real.children.append(child)
-                                run_cmd("-var-set-update-range %s 0 %d" % (real.name, len(real.children)))
+                                run_cmd("-var-set-update-range %s 0 %d" % (real.get_name(), len(real.children)))
                                 continue
 
                         if not "value" in value and not "new_value" in value:
                             real.update_value()
+
+                        for k in value.keys():
+                            real[k] = value[k]
+
                         break
             for item in dellist:
                 self.variables.remove(item)
@@ -1596,6 +1607,8 @@ class GdbLaunch(sublime_plugin.WindowCommand):
         global gdb_shutting_down
         global DEBUG
         global DEBUG_FILE
+        global indent1
+        global indent2
         view = self.window.active_view()
         DEBUG = get_setting("debug", False, view)
         DEBUG_FILE = expand_path(get_setting("debug_file", "stdout", view), self.window)
@@ -1694,6 +1707,10 @@ It seems you're not running gdb with the "mi" interpreter. Please add
             enable_pretty_printing = get_setting("pretty_printing", False, view);
             if (enable_pretty_printing):
                 run_cmd("-enable-pretty-printing")
+
+            indent1 = get_setting("indent1", 15)
+            indent2 = get_setting("indent2", 20)
+            if (indent1 < 1): indent1 = 0
 
             show_input()
         else:
