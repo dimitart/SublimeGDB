@@ -1704,15 +1704,27 @@ It seems you're not running gdb with the "mi" interpreter. Please add
             gdb_run_status = "running"
 
             run_cmd(get_setting("exec_cmd", "-exec-run"), True)
+            show_input()
+
             enable_pretty_printing = get_setting("pretty_printing", False, view);
+            
             if (enable_pretty_printing):
+                run_cmd(
+                    'python\n' + 
+                    'import sys\n' + 
+                    'sys.path.insert(0, \'' + str(os.path.dirname(os.path.abspath(__file__))) + '/pretty-printer\')\n' +
+                    'from libstdcxx.v6.printers import register_libstdcxx_printers\n' +
+                    'register_libstdcxx_printers (None)\n' +
+                    'end\n'
+                )
+
                 run_cmd("-enable-pretty-printing")
+
 
             indent1 = get_setting("indent1", 15)
             indent2 = get_setting("indent2", 20)
             if (indent1 < 1): indent1 = 0
 
-            show_input()
         else:
             sublime.status_message("GDB is already running!")
 
