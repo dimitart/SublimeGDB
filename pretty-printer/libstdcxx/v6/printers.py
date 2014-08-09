@@ -542,6 +542,9 @@ class StdSetPrinter:
         node = node.strip_typedefs()
         return self._iter (RbtreeIterator (self.val), node)
 
+    def display_hint(self):
+        return 'set'
+
 class StdBitsetPrinter:
     "Print a std::bitset"
 
